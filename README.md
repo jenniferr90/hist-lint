@@ -53,6 +53,17 @@ $ histlint --json ~/.bash_history | jq -r '.Command' | grep -c ssh
 17
 ```
 
+`dedup` prints each command once, keeping its most recent occurrence and
+dropping earlier duplicates:
+
+```
+$ histlint dedup ~/.zsh_history
+cd ~/src/histlint
+git status
+go test ./...
+histlint: 4213 entries, 2867 unique, 1346 duplicates removed
+```
+
 By default a malformed line is a hard error and the CLI exits 1:
 
 ```
@@ -107,8 +118,8 @@ with `--format` (CLI) or `Options.Format` (library).
 
 ## Status
 
-Early. Parsing and the CLI summary/JSON output work; nothing here reads
-history *out of* a live shell session yet, and there's no dedup or
+Early. Parsing, the CLI summary/JSON output, and `dedup` work; nothing
+here reads history *out of* a live shell session yet, and there's no
 search tooling on top. See the issue tracker for what's next.
 
 ## License

@@ -266,6 +266,26 @@ func parseBashTimestamped(lines []string, lenient bool) (*Result, error) {
 	return res, nil
 }
 
+// Dedup returns entries with exact duplicate commands collapsed to their
+// most recent occurrence: earlier entries with the same Command text are
+// dropped, and the surviving entry stays at its original position rather
+// than moving to the end. This mirrors how a shell with erasedups-style
+// history control ends up looking, rather than a plain "first seen" unique.
+func Dedup(entries []Entry) []Entry {
+	lastIndex := make(map[string]int, len(entries))
+	for i, e := range entries {
+		lastIndex[e.Command] = i
+	}
+
+	out := make([]Entry, 0, len(lastIndex))
+	for i, e := range entries {
+		if lastIndex[e.Command] == i {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func parsePlain(lines []string, lenient bool) (*Result, error) {
 	res := &Result{Format: FormatPlain}
 

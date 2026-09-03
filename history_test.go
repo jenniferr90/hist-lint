@@ -293,6 +293,49 @@ func TestIssueString(t *testing.T) {
 	}
 }
 
+func TestDedupKeepsMostRecentOccurrence(t *testing.T) {
+	entries := []Entry{
+		{Command: "ls -la", Line: 1},
+		{Command: "git status", Line: 2},
+		{Command: "ls -la", Line: 3},
+		{Command: "echo hi", Line: 4},
+		{Command: "git status", Line: 5},
+	}
+	got := Dedup(entries)
+
+	want := []Entry{
+		{Command: "ls -la", Line: 3},
+		{Command: "echo hi", Line: 4},
+		{Command: "git status", Line: 5},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Dedup returned %d entries, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].Command != w.Command || got[i].Line != w.Line {
+			t.Errorf("entry %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+}
+
+func TestDedupNoDuplicates(t *testing.T) {
+	entries := []Entry{
+		{Command: "a", Line: 1},
+		{Command: "b", Line: 2},
+	}
+	got := Dedup(entries)
+	if len(got) != 2 {
+		t.Fatalf("Dedup = %+v, want unchanged", got)
+	}
+}
+
+func TestDedupEmpty(t *testing.T) {
+	got := Dedup(nil)
+	if len(got) != 0 {
+		t.Fatalf("Dedup(nil) = %+v, want empty", got)
+	}
+}
+
 func TestParseEmptyInput(t *testing.T) {
 	res := mustParse(t, "", Options{})
 	if res.Format != FormatPlain {
