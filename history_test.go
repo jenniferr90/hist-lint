@@ -336,6 +336,60 @@ func TestDedupEmpty(t *testing.T) {
 	}
 }
 
+func TestFilterByTimeUnbounded(t *testing.T) {
+	entries := []Entry{
+		{Command: "a", Timestamp: time.Unix(1000, 0)},
+		{Command: "b"}, // plain entry, no Timestamp
+	}
+	got := FilterByTime(entries, time.Time{}, time.Time{})
+	if len(got) != len(entries) {
+		t.Fatalf("FilterByTime with no bounds = %+v, want entries unchanged", got)
+	}
+}
+
+func TestFilterByTimeSinceAndUntil(t *testing.T) {
+	entries := []Entry{
+		{Command: "before", Timestamp: time.Unix(500, 0)},
+		{Command: "in-range-1", Timestamp: time.Unix(1000, 0)},
+		{Command: "in-range-2", Timestamp: time.Unix(1500, 0)},
+		{Command: "at-until", Timestamp: time.Unix(2000, 0)},
+		{Command: "after", Timestamp: time.Unix(2500, 0)},
+	}
+	got := FilterByTime(entries, time.Unix(1000, 0), time.Unix(2000, 0))
+
+	want := []string{"in-range-1", "in-range-2"}
+	if len(got) != len(want) {
+		t.Fatalf("FilterByTime = %+v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i].Command != w {
+			t.Errorf("entry %d Command = %q, want %q", i, got[i].Command, w)
+		}
+	}
+}
+
+func TestFilterByTimeSinceOnly(t *testing.T) {
+	entries := []Entry{
+		{Command: "before", Timestamp: time.Unix(500, 0)},
+		{Command: "after", Timestamp: time.Unix(1500, 0)},
+	}
+	got := FilterByTime(entries, time.Unix(1000, 0), time.Time{})
+	if len(got) != 1 || got[0].Command != "after" {
+		t.Fatalf("FilterByTime = %+v, want only %q", got, "after")
+	}
+}
+
+func TestFilterByTimeDropsEntriesWithoutTimestamp(t *testing.T) {
+	entries := []Entry{
+		{Command: "no-timestamp"},
+		{Command: "has-timestamp", Timestamp: time.Unix(1000, 0)},
+	}
+	got := FilterByTime(entries, time.Unix(500, 0), time.Time{})
+	if len(got) != 1 || got[0].Command != "has-timestamp" {
+		t.Fatalf("FilterByTime = %+v, want only %q", got, "has-timestamp")
+	}
+}
+
 func TestParseEmptyInput(t *testing.T) {
 	res := mustParse(t, "", Options{})
 	if res.Format != FormatPlain {

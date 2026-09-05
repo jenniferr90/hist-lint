@@ -64,6 +64,16 @@ go test ./...
 histlint: 4213 entries, 2867 unique, 1346 duplicates removed
 ```
 
+`search` filters commands by substring and/or a time range. `--since` and
+`--until` accept RFC3339, `2006-01-02 15:04:05`, or `2006-01-02`, and only
+apply to formats that carry timestamps (`bash-timestamped`, `zsh-extended`):
+
+```
+$ histlint search --query ssh --since 2024-01-01 ~/.zsh_history
+ssh build@ci.internal
+ssh -L 8080:localhost:8080 db.internal
+```
+
 By default a malformed line is a hard error and the CLI exits 1:
 
 ```
@@ -118,9 +128,9 @@ with `--format` (CLI) or `Options.Format` (library).
 
 ## Status
 
-Early. Parsing, the CLI summary/JSON output, and `dedup` work; nothing
-here reads history *out of* a live shell session yet, and there's no
-search tooling on top. See the issue tracker for what's next.
+Early. Parsing, the CLI summary/JSON output, `dedup`, and `search` work;
+nothing here reads history *out of* a live shell session yet (no
+`$HISTFILE` auto-detection). See the issue tracker for what's next.
 
 ## License
 

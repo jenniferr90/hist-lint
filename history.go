@@ -286,6 +286,32 @@ func Dedup(entries []Entry) []Entry {
 	return out
 }
 
+// FilterByTime returns entries whose Timestamp falls in [since, until). A
+// zero since or until leaves that side of the range unbounded, and a zero
+// value for both returns entries unchanged. Entries with no Timestamp
+// (plain-format history has none) are dropped whenever either bound is
+// set, since there's nothing to compare them against.
+func FilterByTime(entries []Entry, since, until time.Time) []Entry {
+	if since.IsZero() && until.IsZero() {
+		return entries
+	}
+
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if e.Timestamp.IsZero() {
+			continue
+		}
+		if !since.IsZero() && e.Timestamp.Before(since) {
+			continue
+		}
+		if !until.IsZero() && !e.Timestamp.Before(until) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 func parsePlain(lines []string, lenient bool) (*Result, error) {
 	res := &Result{Format: FormatPlain}
 
