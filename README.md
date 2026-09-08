@@ -53,6 +53,16 @@ $ histlint --json ~/.bash_history | jq -r '.Command' | grep -c ssh
 17
 ```
 
+Run with no file argument and nothing piped in, and histlint reads
+`$HISTFILE` if it's set, or falls back to `~/.bash_history` /
+`~/.zsh_history` based on `$SHELL`:
+
+```
+$ histlint
+format:  zsh-extended
+entries: 4213
+```
+
 `dedup` prints each command once, keeping its most recent occurrence and
 dropping earlier duplicates:
 
@@ -128,9 +138,9 @@ with `--format` (CLI) or `Options.Format` (library).
 
 ## Status
 
-Early. Parsing, the CLI summary/JSON output, `dedup`, and `search` work;
-nothing here reads history *out of* a live shell session yet (no
-`$HISTFILE` auto-detection). See the issue tracker for what's next.
+Early. Parsing, the CLI summary/JSON output, `dedup`, `search`, and
+`$HISTFILE`/`$SHELL` auto-detection work; there's no `--stats` summary
+yet. See the issue tracker for what's next.
 
 ## License
 

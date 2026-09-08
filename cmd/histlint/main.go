@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,9 +37,12 @@ func runReport(args []string) {
 	asJSON := fs.Bool("json", false, "print entries as JSON lines instead of a summary")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: histlint [flags] [file]\n\n"+
-			"Reads a shell history file (or stdin) and reports its format,\n"+
-			"entry count, and any lines that don't fit that format. Fails\n"+
-			"on the first malformed line unless --lenient is given.\n\n"+
+			"Reads a shell history file and reports its format, entry count,\n"+
+			"and any lines that don't fit that format. Fails on the first\n"+
+			"malformed line unless --lenient is given.\n\n"+
+			"With no file argument, reads piped stdin if there is any,\n"+
+			"otherwise falls back to $HISTFILE or a default path guessed\n"+
+			"from $SHELL.\n\n"+
 			"Subcommands:\n"+
 			"  dedup    print each command once, dropping earlier duplicates\n"+
 			"  search   filter commands by text and/or time range\n\n")
@@ -51,16 +56,12 @@ func runReport(args []string) {
 		os.Exit(2)
 	}
 
-	in := os.Stdin
-	if fs.NArg() > 0 {
-		file, err := os.Open(fs.Arg(0))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "histlint:", err)
-			os.Exit(1)
-		}
-		defer file.Close()
-		in = file
+	in, err := openInput(fs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "histlint:", err)
+		os.Exit(1)
 	}
+	defer in.Close()
 
 	res, err := histlint.Parse(in, histlint.Options{Lenient: *lenient, Format: f})
 	if err != nil {
@@ -99,9 +100,11 @@ func runDedup(args []string) {
 	asJSON := fs.Bool("json", false, "print deduped entries as JSON lines instead of one command per line")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: histlint dedup [flags] [file]\n\n"+
-			"Reads a shell history file (or stdin) and prints each distinct\n"+
-			"command once, keeping its most recent occurrence and dropping\n"+
-			"earlier duplicates.\n\n")
+			"Reads a shell history file and prints each distinct command\n"+
+			"once, keeping its most recent occurrence and dropping earlier\n"+
+			"duplicates. With no file argument, reads piped stdin if there\n"+
+			"is any, otherwise falls back to $HISTFILE or a default path\n"+
+			"guessed from $SHELL.\n\n")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -112,16 +115,12 @@ func runDedup(args []string) {
 		os.Exit(2)
 	}
 
-	in := os.Stdin
-	if fs.NArg() > 0 {
-		file, err := os.Open(fs.Arg(0))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "histlint:", err)
-			os.Exit(1)
-		}
-		defer file.Close()
-		in = file
+	in, err := openInput(fs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "histlint:", err)
+		os.Exit(1)
 	}
+	defer in.Close()
 
 	res, err := histlint.Parse(in, histlint.Options{Lenient: *lenient, Format: f})
 	if err != nil {
@@ -162,11 +161,13 @@ func runSearch(args []string) {
 	until := fs.String("until", "", "only include entries before this time")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: histlint search [flags] [file]\n\n"+
-			"Reads a shell history file (or stdin) and prints commands matching\n"+
+			"Reads a shell history file and prints commands matching\n"+
 			"--query and/or falling within [--since, --until). Times accept\n"+
 			"RFC3339, \"2006-01-02 15:04:05\", or \"2006-01-02\". Plain history\n"+
 			"has no timestamps, so --since/--until only apply to bash-timestamped\n"+
-			"or zsh-extended input.\n\n")
+			"or zsh-extended input. With no file argument, reads piped stdin\n"+
+			"if there is any, otherwise falls back to $HISTFILE or a default\n"+
+			"path guessed from $SHELL.\n\n")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -191,16 +192,12 @@ func runSearch(args []string) {
 		}
 	}
 
-	in := os.Stdin
-	if fs.NArg() > 0 {
-		file, err := os.Open(fs.Arg(0))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "histlint:", err)
-			os.Exit(1)
-		}
-		defer file.Close()
-		in = file
+	in, err := openInput(fs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "histlint:", err)
+		os.Exit(1)
 	}
+	defer in.Close()
 
 	res, err := histlint.Parse(in, histlint.Options{Lenient: *lenient, Format: f})
 	if err != nil {
@@ -240,6 +237,61 @@ func runSearch(args []string) {
 
 	for _, e := range matched {
 		fmt.Println(e.Command)
+	}
+}
+
+// openInput picks the history file to read for a subcommand: an explicit
+// file argument wins, then piped stdin, then $HISTFILE or a shell-guessed
+// default. Falling back to a real history file only when stdin is a
+// terminal keeps `histlint <flags> < file` and pipelines working exactly
+// as before this fallback was added.
+func openInput(fs *flag.FlagSet) (io.ReadCloser, error) {
+	if fs.NArg() > 0 {
+		return os.Open(fs.Arg(0))
+	}
+	if !isTerminal(os.Stdin) {
+		return io.NopCloser(os.Stdin), nil
+	}
+	path, err := defaultHistFile()
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("no file given and stdin isn't piped, so falling back to %s: %w", path, err)
+	}
+	return f, nil
+}
+
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// defaultHistFile locates a history file to fall back to when no file
+// argument is given and stdin isn't piped: $HISTFILE if set, otherwise a
+// guess based on $SHELL, since that's what most people mean by "my
+// history" even though bash and zsh don't agree on where it lives.
+func defaultHistFile() (string, error) {
+	if h := os.Getenv("HISTFILE"); h != "" {
+		return h, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("no file given, stdin isn't piped, and $HISTFILE is unset: %w", err)
+	}
+
+	switch shell := filepath.Base(os.Getenv("SHELL")); shell {
+	case "zsh":
+		return filepath.Join(home, ".zsh_history"), nil
+	case "bash":
+		return filepath.Join(home, ".bash_history"), nil
+	default:
+		return "", fmt.Errorf("no file given, stdin isn't piped, $HISTFILE is unset, and $SHELL (%q) isn't bash or zsh", os.Getenv("SHELL"))
 	}
 }
 
