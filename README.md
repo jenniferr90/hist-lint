@@ -84,6 +84,18 @@ ssh build@ci.internal
 ssh -L 8080:localhost:8080 db.internal
 ```
 
+`stats` summarizes the most-used commands, counted by the first token of
+each entry (so `git status` and `git commit -m x` both count toward `git`):
+
+```
+$ histlint stats --top 5 ~/.zsh_history
+   842  git
+   611  cd
+   398  ls
+   203  go
+   174  ssh
+```
+
 By default a malformed line is a hard error and the CLI exits 1:
 
 ```
@@ -138,9 +150,9 @@ with `--format` (CLI) or `Options.Format` (library).
 
 ## Status
 
-Early. Parsing, the CLI summary/JSON output, `dedup`, `search`, and
-`$HISTFILE`/`$SHELL` auto-detection work; there's no `--stats` summary
-yet. See the issue tracker for what's next.
+Early. Parsing, the CLI summary/JSON output, `dedup`, `search`, `stats`,
+and `$HISTFILE`/`$SHELL` auto-detection work. See the issue tracker for
+what's next.
 
 ## License
 

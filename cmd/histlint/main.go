@@ -25,6 +25,9 @@ func main() {
 		case "search":
 			runSearch(os.Args[2:])
 			return
+		case "stats":
+			runStats(os.Args[2:])
+			return
 		}
 	}
 	runReport(os.Args[1:])
@@ -45,7 +48,8 @@ func runReport(args []string) {
 			"from $SHELL.\n\n"+
 			"Subcommands:\n"+
 			"  dedup    print each command once, dropping earlier duplicates\n"+
-			"  search   filter commands by text and/or time range\n\n")
+			"  search   filter commands by text and/or time range\n"+
+			"  stats    summarize the most-used commands\n\n")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -237,6 +241,66 @@ func runSearch(args []string) {
 
 	for _, e := range matched {
 		fmt.Println(e.Command)
+	}
+}
+
+func runStats(args []string) {
+	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	lenient := fs.Bool("lenient", false, "tolerate malformed lines instead of stopping on the first one")
+	format := fs.String("format", "auto", "history format: auto, plain, bash, zsh")
+	asJSON := fs.Bool("json", false, "print stats as JSON lines instead of a table")
+	top := fs.Int("top", 20, "show at most this many commands (0 for no limit)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: histlint stats [flags] [file]\n\n"+
+			"Reads a shell history file and reports the most-used commands,\n"+
+			"counted by the first token of each entry (e.g. \"git\" for\n"+
+			"\"git status\"). With no file argument, reads piped stdin if\n"+
+			"there is any, otherwise falls back to $HISTFILE or a default\n"+
+			"path guessed from $SHELL.\n\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	f, err := resolveFormat(*format)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "histlint:", err)
+		os.Exit(2)
+	}
+
+	in, err := openInput(fs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "histlint:", err)
+		os.Exit(1)
+	}
+	defer in.Close()
+
+	res, err := histlint.Parse(in, histlint.Options{Lenient: *lenient, Format: f})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		if !*lenient {
+			fmt.Fprintln(os.Stderr, "histlint: rerun with --lenient to skip bad lines and continue")
+		}
+		os.Exit(1)
+	}
+
+	stats := histlint.Stats(res.Entries)
+	if *top > 0 && len(stats) > *top {
+		stats = stats[:*top]
+	}
+
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		for _, s := range stats {
+			if err := enc.Encode(s); err != nil {
+				fmt.Fprintln(os.Stderr, "histlint:", err)
+				os.Exit(1)
+			}
+		}
+		return
+	}
+
+	for _, s := range stats {
+		fmt.Printf("%6d  %s\n", s.Count, s.Command)
 	}
 }
 

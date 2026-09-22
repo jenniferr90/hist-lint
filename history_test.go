@@ -390,6 +390,68 @@ func TestFilterByTimeDropsEntriesWithoutTimestamp(t *testing.T) {
 	}
 }
 
+func TestStatsCountsAndOrders(t *testing.T) {
+	entries := []Entry{
+		{Command: "git status"},
+		{Command: "ls -la"},
+		{Command: "git commit -m x"},
+		{Command: "ls"},
+		{Command: "git push"},
+	}
+	got := Stats(entries)
+
+	want := []CommandStat{
+		{Command: "git", Count: 3},
+		{Command: "ls", Count: 2},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Stats = %+v, want %+v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("entry %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+}
+
+func TestStatsTiesBrokenAlphabetically(t *testing.T) {
+	entries := []Entry{
+		{Command: "zsh -c foo"},
+		{Command: "awk '{print}'"},
+		{Command: "make build"},
+	}
+	got := Stats(entries)
+
+	want := []string{"awk", "make", "zsh"}
+	if len(got) != len(want) {
+		t.Fatalf("Stats = %+v, want %d entries", got, len(want))
+	}
+	for i, w := range want {
+		if got[i].Command != w || got[i].Count != 1 {
+			t.Errorf("entry %d = %+v, want Command=%q Count=1", i, got[i], w)
+		}
+	}
+}
+
+func TestStatsMultilineCommandUsesFirstToken(t *testing.T) {
+	entries := []Entry{
+		{Command: "python3 <<'EOF'\nprint(1)\nEOF"},
+		{Command: "python3 -c pass"},
+	}
+	got := Stats(entries)
+
+	if len(got) != 1 || got[0].Command != "python3" || got[0].Count != 2 {
+		t.Fatalf("Stats = %+v, want single entry Command=python3 Count=2", got)
+	}
+}
+
+func TestStatsEmpty(t *testing.T) {
+	got := Stats(nil)
+	if len(got) != 0 {
+		t.Fatalf("Stats(nil) = %+v, want empty", got)
+	}
+}
+
 func TestParseEmptyInput(t *testing.T) {
 	res := mustParse(t, "", Options{})
 	if res.Format != FormatPlain {

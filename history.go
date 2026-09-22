@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -309,6 +310,44 @@ func FilterByTime(entries []Entry, since, until time.Time) []Entry {
 		}
 		out = append(out, e)
 	}
+	return out
+}
+
+// CommandStat is one line of a usage summary: a command name and how many
+// times it occurs.
+type CommandStat struct {
+	Command string
+	Count   int
+}
+
+// Stats summarizes entries by the first whitespace-separated token of each
+// command (its program name, e.g. "git" for "git status --short"), sorted
+// by descending count and then alphabetically to break ties. A multi-line
+// command is counted under the token that starts its first line, since
+// that's the program that actually ran.
+func Stats(entries []Entry) []CommandStat {
+	counts := make(map[string]int)
+	for _, e := range entries {
+		name := e.Command
+		if i := strings.IndexAny(name, " \t\n"); i >= 0 {
+			name = name[:i]
+		}
+		if name == "" {
+			continue
+		}
+		counts[name]++
+	}
+
+	out := make([]CommandStat, 0, len(counts))
+	for name, n := range counts {
+		out = append(out, CommandStat{Command: name, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Command < out[j].Command
+	})
 	return out
 }
 
